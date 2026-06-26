@@ -1,0 +1,57 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.build/
+build/
+pubspec.lock   
+
+# Android
+android/app/debug.keystore
+android/app/profile.keystore
+android/app/release.keystore
+android/key.properties
+android/.gradle/
+android/local.properties
+
+# iOS
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/.last_build_id
+ios/Pods/
+*.xcworkspace
+Podfile.lock
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/       
+
+# Coverage & Testing
+coverage/
+test/.coverage
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# Metadata
+.metadata
+*.pyc
