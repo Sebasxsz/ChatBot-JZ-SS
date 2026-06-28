@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 void main() {
@@ -10,10 +11,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Chatbot Ruta Óptima',
-      theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
       home: const ChatScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -41,13 +39,51 @@ class _ChatScreenState extends State<ChatScreen> {
   };
 
   final Map<String, List<Map<String, dynamic>>> grafo = {
-    'A': [{'to': 'B', 'costo': 40}, {'to': 'C', 'costo': 60}, {'to': 'G', 'costo': 30}],
-    'B': [{'to': 'A', 'costo': 40}, {'to': 'C', 'costo': 25}, {'to': 'D', 'costo': 50}],
-    'C': [{'to': 'A', 'costo': 60}, {'to': 'B', 'costo': 25}, {'to': 'E', 'costo': 35}],
-    'D': [{'to': 'B', 'costo': 50}, {'to': 'E', 'costo': 20}, {'to': 'F', 'costo': 45}],
-    'E': [{'to': 'C', 'costo': 35}, {'to': 'D', 'costo': 20}, {'to': 'F', 'costo': 30}],
-    'F': [{'to': 'D', 'costo': 45}, {'to': 'E', 'costo': 30}, {'to': 'G', 'costo': 55}],
-    'G': [{'to': 'A', 'costo': 30}, {'to': 'F', 'costo': 55}],
+    'A': [
+      {'to': 'B', 'costo': 40},
+      {'to': 'C', 'costo': 60},
+      {'to': 'G', 'costo': 30},
+    ],
+    'B': [
+      {'to': 'A', 'costo': 40},
+      {'to': 'C', 'costo': 25},
+      {'to': 'D', 'costo': 50},
+    ],
+    'C': [
+      {'to': 'A', 'costo': 60},
+      {'to': 'B', 'costo': 25},
+      {'to': 'E', 'costo': 35},
+    ],
+    'D': [
+      {'to': 'B', 'costo': 50},
+      {'to': 'E', 'costo': 20},
+      {'to': 'F', 'costo': 45},
+    ],
+    'E': [
+      {'to': 'C', 'costo': 35},
+      {'to': 'D', 'costo': 20},
+      {'to': 'F', 'costo': 30},
+    ],
+    'F': [
+      {'to': 'D', 'costo': 45},
+      {'to': 'E', 'costo': 30},
+      {'to': 'G', 'costo': 55},
+    ],
+    'G': [
+      {'to': 'A', 'costo': 30},
+      {'to': 'F', 'costo': 55},
+    ],
+  };
+
+  // Coordenadas a escala para la heurística de línea recta
+  final Map<String, (double, double)> coordenadas = {
+    'A': (0.0, 0.0),
+    'B': (4.0, 4.0),
+    'C': (6.0, 2.0),
+    'D': (10.0, 8.0),
+    'E': (8.0, 12.0),
+    'F': (4.0, 10.0),
+    'G': (2.0, 5.0),
   };
 
   final List<Map<String, String>> sugerencias = [
@@ -67,8 +103,9 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages.add({
           'type': 'bot',
-          'text': '👋 ¡Hola! Soy tu asistente de rutas.\n\n'
-              'Toca alguna sugerencia rápida o escribe una ruta.'
+          'text':
+              '👋 ¡Hola! Soy tu asistente de rutas.\n\n'
+              'Toca alguna sugerencia rápida o escribe una ruta.',
         });
       });
     });
@@ -95,15 +132,39 @@ class _ChatScreenState extends State<ChatScreen> {
   String procesarMensaje(String msg) {
     String? inicio, destino;
 
-    for (var key in nombres.keys) {
-      if (msg.contains(key.toLowerCase())) {
-        if (inicio == null) inicio = key;
-        else destino = key;
+    // Limpiamos el texto y lo separamos por espacios en palabras individuales
+    List<String> palabras = msg
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .split(' ');
+
+    for (var palabra in palabras) {
+      for (var key in nombres.keys) {
+        if (palabra == key.toLowerCase()) {
+          if (inicio == null) {
+            inicio = key;
+          } else if (destino == null && key != inicio) {
+            destino = key;
+          }
+        }
+      }
+    }
+
+    // Si no se encuentran nodos individuales por letra, buscamos por el nombre completo
+    if (inicio == null || destino == null) {
+      for (var key in nombres.keys) {
+        if (msg.contains(nombres[key]!.toLowerCase())) {
+          if (inicio == null) {
+            inicio = key;
+          } else if (destino == null && key != inicio) {
+            destino = key;
+          }
+        }
       }
     }
 
     if (inicio != null && destino != null) {
-      final resultado = dijkstra(inicio, destino);
+      final resultado = algoritmoAEstrella(inicio, destino);
       List<String> ruta = resultado['ruta'];
       List<String> rutaNombres = ruta.map((n) => nombres[n] ?? n).toList();
 
@@ -112,9 +173,9 @@ class _ChatScreenState extends State<ChatScreen> {
         rutaTexto += "${i + 1}. ${rutaNombres[i]}\n";
       }
 
-      return "✅ **Ruta más corta encontrada**\n\n"
+      return "✅ Ruta más corta encontrada\n\n"
           "$rutaTexto\n"
-          "💰 **Costo total: ${resultado['costo'].toStringAsFixed(0)}** unidades";
+          "💰 Costo total: ${resultado['costo'].toStringAsFixed(0)} unidades";
     }
 
     return "No entendí la ruta. Intenta con las sugerencias de abajo o escribe algo como:\n"
@@ -122,29 +183,55 @@ class _ChatScreenState extends State<ChatScreen> {
         "• desde B hasta F";
   }
 
-  Map<String, dynamic> dijkstra(String start, String end) {
-    final dist = <String, double>{for (var k in grafo.keys) k: double.infinity};
+  double _calcularHeuristica(String nodoActual, String nodoDestino) {
+    final p1 = coordenadas[nodoActual]!;
+    final p2 = coordenadas[nodoDestino]!;
+    // Guardamos la distancia real usando raíz cuadrada (Teorema de Pitágoras)
+    return math.sqrt(
+      (p1.$1 - p2.$1) * (p1.$1 - p2.$1) + (p1.$2 - p2.$2) * (p1.$2 - p2.$2),
+    );
+  }
+
+  // Implementación oficial del Algoritmo A*
+  Map<String, dynamic> algoritmoAEstrella(String start, String end) {
+    final gScore = <String, double>{
+      for (var k in grafo.keys) k: double.infinity,
+    };
+    final fScore = <String, double>{
+      for (var k in grafo.keys) k: double.infinity,
+    };
     final prev = <String, String?>{};
-    final pq = <(double, String)>[];
+    final openSet = <(double, String)>[]; // Contiene pares de (fScore, nodo)
 
-    dist[start] = 0;
-    pq.add((0, start));
+    gScore[start] = 0;
+    fScore[start] = _calcularHeuristica(start, end);
+    openSet.add((fScore[start]!, start));
 
-    while (pq.isNotEmpty) {
-      pq.sort((a, b) => a.$1.compareTo(b.$1));
-      final (cost, u) = pq.removeAt(0);
-      if (cost > dist[u]!) continue;
+    while (openSet.isNotEmpty) {
+      // Ordenar para tomar siempre el de menor fScore (Costo real + Heurística)
+      openSet.sort((a, b) => a.$1.compareTo(b.$1));
+      final (_, u) = openSet.removeAt(0);
+
+      if (u == end) break; // Ya llegamos al destino óptimo
 
       for (var v in grafo[u]!) {
-        double newCost = cost + v['costo'];
-        if (newCost < dist[v['to']]!) {
-          dist[v['to']] = newCost;
+        double tentativeGScore = gScore[u]! + v['costo'];
+
+        if (tentativeGScore < gScore[v['to']]!) {
           prev[v['to']] = u;
-          pq.add((newCost, v['to']));
+          gScore[v['to']] = tentativeGScore;
+          fScore[v['to']] =
+              gScore[v['to']]! + _calcularHeuristica(v['to'], end);
+
+          // Si no está en el conjunto de evaluación, lo agregamos
+          if (!openSet.any((element) => element.$2 == v['to'])) {
+            openSet.add((fScore[v['to']]!, v['to']));
+          }
         }
       }
     }
 
+    // Reconstrucción del camino recorrido
     List<String> path = [];
     String? current = end;
     while (current != null) {
@@ -153,7 +240,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     path = path.reversed.toList();
 
-    return {'ruta': path.length > 1 ? path : [], 'costo': dist[end]!};
+    return {'ruta': path.length > 1 ? path : [], 'costo': gScore[end]!};
   }
 
   void _limpiarChat() {
@@ -169,7 +256,11 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('🤖 Chatbot Ruta Menor Costo'),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.delete), onPressed: _limpiarChat, tooltip: "Limpiar chat"),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _limpiarChat,
+            tooltip: "Limpiar chat",
+          ),
         ],
       ),
       body: Column(
@@ -183,7 +274,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 final msg = _messages[_messages.length - 1 - index];
                 bool esUsuario = msg['type'] == 'user';
                 return Align(
-                  alignment: esUsuario ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment: esUsuario
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     padding: const EdgeInsets.all(16),
@@ -211,15 +304,24 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: sugerencias.map((sug) => ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo[100],
-                  foregroundColor: Colors.indigo[900],
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-                onPressed: () => _enviarMensaje(textoPredefinido: "${sug['from']} a ${sug['to']}"),
-                child: Text(sug['text']!),
-              )).toList(),
+              children: sugerencias
+                  .map(
+                    (sug) => ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo[100],
+                        foregroundColor: Colors.indigo[900],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
+                      onPressed: () => _enviarMensaje(
+                        textoPredefinido: "${sug['from']} a ${sug['to']}",
+                      ),
+                      child: Text(sug['text']!),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
 
@@ -232,7 +334,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _controller,
                     decoration: InputDecoration(
                       hintText: "Escribe una ruta (ej: A a E)",
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
                       filled: true,
                       fillColor: Colors.white,
                     ),
