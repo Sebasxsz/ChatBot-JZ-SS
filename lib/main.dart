@@ -38,6 +38,76 @@ class _ChatScreenState extends State<ChatScreen> {
     'G': 'Estacionamiento',
   };
 
+  // 🌟 NUEVO: Diccionario de sinónimos para NLP
+  final Map<String, List<String>> sinonimos = {
+    'A': [
+      'entrada',
+      'entrada principal',
+      'puerta',
+      'ingreso',
+      'acceso',
+      'porton',
+      'recepción',
+      'recepcion'
+    ],
+    'B': [
+      'administrativo',
+      'edificio administrativo',
+      'admin',
+      'oficinas',
+      'bloque administrativo',
+      'administración',
+      'administracion'
+    ],
+    'C': [
+      'laboratorio',
+      'lab',
+      'laboratorio 1',
+      'laboratorios',
+      'lab 1',
+      'laboratorio uno'
+    ],
+    'D': [
+      'almacen',
+      'almacén',
+      'bodega',
+      'deposito',
+      'depósito',
+      'almacen central',
+      'almacén central',
+      'stock'
+    ],
+    'E': [
+      'planta',
+      'produccion',
+      'producción',
+      'planta de produccion',
+      'planta de producción',
+      'fabrica',
+      'fábrica',
+      'manufactura'
+    ],
+    'F': [
+      'comedor',
+      'cafeteria',
+      'cafetería',
+      'restaurante',
+      'comida',
+      'almuerzo',
+      'desayuno',
+      'cena'
+    ],
+    'G': [
+      'estacionamiento',
+      'parqueadero',
+      'parking',
+      'parqueo',
+      'estacionar',
+      'garaje',
+      'aparcamiento'
+    ],
+  };
+
   final Map<String, List<Map<String, dynamic>>> grafo = {
     'A': [
       {'to': 'B', 'costo': 40},
@@ -105,7 +175,11 @@ class _ChatScreenState extends State<ChatScreen> {
           'type': 'bot',
           'text':
               '👋 ¡Hola! Soy tu asistente de rutas.\n\n'
-              'Toca alguna sugerencia rápida o escribe una ruta.',
+              'Puedes hablarme naturalmente:\n'
+              '• "Quiero ir del laboratorio al almacén"\n'
+              '• "¿Cómo llego a la planta desde la entrada?"\n'
+              '• "Ruta de admin hasta comedor"\n\n'
+              'También puedes usar las sugerencias rápidas.',
         });
       });
     });
@@ -129,70 +203,157 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  //  NUEVO: Función mejorada con NLP para entender lenguaje natural
   String procesarMensaje(String msg) {
+    String textoLimpio = msg.toLowerCase().trim();
     String? inicio, destino;
 
-    // Limpiamos el texto y lo separamos por espacios en palabras individuales
-    List<String> palabras = msg
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .split(' ');
+    // PASO 1: Buscar qué lugares mencionó el usuario usando sinónimos
+    Map<String, int> lugaresEncontrados = {}; // Guarda el Nodo y posición en la frase
 
-    for (var palabra in palabras) {
-      for (var key in nombres.keys) {
-        if (palabra == key.toLowerCase()) {
-          if (inicio == null) {
-            inicio = key;
-          } else if (destino == null && key != inicio) {
-            destino = key;
+    sinonimos.forEach((nodo, listaSinonimos) {
+      for (var sinonimo in listaSinonimos) {
+        int index = textoLimpio.indexOf(sinonimo.toLowerCase());
+        if (index != -1) {
+          // Guardamos la primera aparición de este nodo
+          if (!lugaresEncontrados.containsKey(nodo)) {
+            lugaresEncontrados[nodo] = index;
+          }
+          break; // Encontramos un sinónimo, pasamos al siguiente nodo
+        }
+      }
+    });
+
+    // También buscar por letras de nodo (A, B, C, etc.) como fallback
+    if (lugaresEncontrados.length < 2) {
+      List<String> palabras = textoLimpio
+          .replaceAll(RegExp(r'[^\w\s]'), '')
+          .split(' ')
+          .where((p) => p.isNotEmpty)
+          .toList();
+
+      for (var palabra in palabras) {
+        for (var key in nombres.keys) {
+          if (palabra == key.toLowerCase() &&
+              !lugaresEncontrados.containsKey(key)) {
+            lugaresEncontrados[key] = textoLimpio.indexOf(palabra);
           }
         }
       }
     }
 
-    // Si no se encuentran nodos individuales por letra, buscamos por el nombre completo
-    if (inicio == null || destino == null) {
-      for (var key in nombres.keys) {
-        if (msg.contains(nombres[key]!.toLowerCase())) {
-          if (inicio == null) {
-            inicio = key;
-          } else if (destino == null && key != inicio) {
-            destino = key;
+    //  PASO 2: Si encontramos al menos 2 lugares, aplicar NLP para origen/destino
+    if (lugaresEncontrados.length >= 2) {
+      var nodos = lugaresEncontrados.keys.toList();
+      String nodoX = nodos[0];
+      String nodoY = nodos[1];
+
+      // Verificar si hay conectores de destino antes del segundo nodo
+      // Conectores: "al", "a", "hasta", "para", "hacia"
+      bool destinoEsElSegundo = false;
+
+      // Buscar patrones como "de X a Y", "desde X hasta Y", "X al Y"
+      List<String> conectoresOrigen = ['de', 'desde', 'salgo de', 'parto de', 'vengo de'];
+      List<String> conectoresDestino = ['al', 'a', 'hasta', 'para', 'hacia', 'hasta el', 'hasta la', 'para el', 'para la'];
+
+      // Determinar cuál es origen y cuál es destino basado en conectores
+      for (var conector in conectoresOrigen) {
+        String patron = '$conector.*\\b${sinonimos[nodoX]?.first ?? nodoX.toLowerCase()}';
+        if (RegExp(patron).hasMatch(textoLimpio)) {
+          inicio = nodoX;
+          destino = nodoY;
+          break;
+        }
+        patron = '$conector.*\\b${sinonimos[nodoY]?.first ?? nodoY.toLowerCase()}';
+        if (RegExp(patron).hasMatch(textoLimpio)) {
+          inicio = nodoY;
+          destino = nodoX;
+          break;
+        }
+      }
+
+      // Si no se determinó por conectores de origen, buscar por conectores de destino
+      if (inicio == null || destino == null) {
+        for (var conector in conectoresDestino) {
+          String patron = '$conector.*\\b${sinonimos[nodoY]?.first ?? nodoY.toLowerCase()}';
+          if (RegExp(patron).hasMatch(textoLimpio)) {
+            inicio = nodoX;
+            destino = nodoY;
+            break;
           }
+          patron = '$conector.*\\b${sinonimos[nodoX]?.first ?? nodoX.toLowerCase()}';
+          if (RegExp(patron).hasMatch(textoLimpio)) {
+            inicio = nodoY;
+            destino = nodoX;
+            break;
+          }
+        }
+      }
+
+      // Si aún no se determinó, usar el orden de aparición en la frase
+      if (inicio == null || destino == null) {
+        if (lugaresEncontrados[nodoX]! < lugaresEncontrados[nodoY]!) {
+          // Si menciona "X a Y" o "X hasta Y", el primero suele ser origen
+          inicio = nodoX;
+          destino = nodoY;
+        } else {
+          inicio = nodoY;
+          destino = nodoX;
         }
       }
     }
 
-    if (inicio != null && destino != null) {
+    // PASO 3: Si el NLP logró extraer origen y destino, ejecutar A*
+    if (inicio != null && destino != null && inicio != destino) {
       final resultado = algoritmoAEstrella(inicio, destino);
       List<String> ruta = resultado['ruta'];
+      
+      if (ruta.isEmpty) {
+        return "No se pudo encontrar una ruta entre ${nombres[inicio]} y ${nombres[destino]}.\n"
+            "Verifica que exista conexión entre estos puntos.";
+      }
+
       List<String> rutaNombres = ruta.map((n) => nombres[n] ?? n).toList();
 
       String rutaTexto = '';
       for (int i = 0; i < rutaNombres.length; i++) {
-        rutaTexto += "${i + 1}. ${rutaNombres[i]}\n";
+        String flecha = i < rutaNombres.length - 1 ? ' ⬇️' : ' 🎯';
+        rutaTexto += "${i + 1}. ${rutaNombres[i]}$flecha\n";
       }
 
-      return "✅ Ruta más corta encontrada\n\n"
+      return "🤖Ruta interpretada con éxito\n\n"
+          "📍 Desde: ${nombres[inicio]}\n"
+          "🏁 Hasta: ${nombres[destino]}\n\n"
+          "🗺️ Recorrido:\n"
           "$rutaTexto\n"
-          "💰 Costo total: ${resultado['costo'].toStringAsFixed(0)} unidades";
+          "Costo total: ${resultado['costo'].toStringAsFixed(0)} unidades\n\n"
+          "✨La ruta más eficiente";
     }
 
-    return "No entendí la ruta. Intenta con las sugerencias de abajo o escribe algo como:\n"
-        "• ruta de A a E\n"
-        "• desde B hasta F";
+    // Si solo encontró un lugar
+    if (lugaresEncontrados.length == 1) {
+      String lugar = nombres[lugaresEncontrados.keys.first]!;
+      return "🤔 Entiendo que quieres ir a **$lugar**, pero necesito saber desde dónde.\n"
+          "Por ejemplo: 'Quiero ir de la entrada a $lugar' o 'Desde admin hasta $lugar'";
+    }
+
+    // Si no entendió nada
+    return "No logré entender la ruta. Aquí tienes algunos ejemplos de cómo pedírmelo:\n\n"
+        "• 'Quiero ir del laboratorio hasta el almacén'\n"
+        "• '¿Cómo llego a la planta desde la entrada?'\n"
+        "• 'Ruta de admin a comedor'\n"
+        "• 'De A a E'\n\n"
+        "También puedes usar los botones de sugerencia rápida 👇";
   }
 
   double _calcularHeuristica(String nodoActual, String nodoDestino) {
     final p1 = coordenadas[nodoActual]!;
     final p2 = coordenadas[nodoDestino]!;
-    // Guardamos la distancia real usando raíz cuadrada (Teorema de Pitágoras)
     return math.sqrt(
       (p1.$1 - p2.$1) * (p1.$1 - p2.$1) + (p1.$2 - p2.$2) * (p1.$2 - p2.$2),
     );
   }
 
-  // Implementación oficial del Algoritmo A*
   Map<String, dynamic> algoritmoAEstrella(String start, String end) {
     final gScore = <String, double>{
       for (var k in grafo.keys) k: double.infinity,
@@ -201,18 +362,17 @@ class _ChatScreenState extends State<ChatScreen> {
       for (var k in grafo.keys) k: double.infinity,
     };
     final prev = <String, String?>{};
-    final openSet = <(double, String)>[]; // Contiene pares de (fScore, nodo)
+    final openSet = <(double, String)>[];
 
     gScore[start] = 0;
     fScore[start] = _calcularHeuristica(start, end);
     openSet.add((fScore[start]!, start));
 
     while (openSet.isNotEmpty) {
-      // Ordenar para tomar siempre el de menor fScore (Costo real + Heurística)
       openSet.sort((a, b) => a.$1.compareTo(b.$1));
       final (_, u) = openSet.removeAt(0);
 
-      if (u == end) break; // Ya llegamos al destino óptimo
+      if (u == end) break;
 
       for (var v in grafo[u]!) {
         double tentativeGScore = gScore[u]! + v['costo'];
@@ -223,7 +383,6 @@ class _ChatScreenState extends State<ChatScreen> {
           fScore[v['to']] =
               gScore[v['to']]! + _calcularHeuristica(v['to'], end);
 
-          // Si no está en el conjunto de evaluación, lo agregamos
           if (!openSet.any((element) => element.$2 == v['to'])) {
             openSet.add((fScore[v['to']]!, v['to']));
           }
@@ -231,7 +390,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    // Reconstrucción del camino recorrido
     List<String> path = [];
     String? current = end;
     while (current != null) {
@@ -280,6 +438,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     padding: const EdgeInsets.all(16),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                    ),
                     decoration: BoxDecoration(
                       color: esUsuario ? Colors.indigo[600] : Colors.grey[200],
                       borderRadius: BorderRadius.circular(20),
@@ -333,7 +494,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _controller,
                     decoration: InputDecoration(
-                      hintText: "Escribe una ruta (ej: A a E)",
+                      hintText: "Ej: Quiero ir del laboratorio al almacén",
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
@@ -345,7 +506,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 FloatingActionButton(
-                  onPressed: _enviarMensaje,
+                  onPressed: () => _enviarMensaje(),
                   child: const Icon(Icons.send),
                 ),
               ],
