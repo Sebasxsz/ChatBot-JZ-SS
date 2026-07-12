@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt; // 🎙️ Paquete de voz
+import 'campus_data.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,7 +13,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Chatbot Ruta Óptima ESPAM-MFL',
-      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff0d47a1),
+          primary: const Color(0xff1565c0),
+          secondary: const Color(0xff00a86b),
+          surface: Colors.white,
+          
+        ),
+      ),
       home: const ChatScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -26,282 +37,81 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final List<Map<String, String>> _messages = [];
+  bool _estaEscribiendo = false;
 
-  // 🏛️ Nombres reales de la ESPAM-MFL (actualizado con todas las carreras y edificios)
-  final Map<String, String> nombres = {
-    'VET': 'Facultad Medicina Veterinarias',
-    'INC': 'Planta Incubadora',
-    'ADM': 'Carrera de Administración de Empresas',
-    'AUD': 'Auditorio Jacinta López',
-    'AGR': 'Carrera de Ingeniería Agrícola',
-    'LAB': 'Laboratorio de Agropecuaria',
-    'KAA': 'Kaacao S.A.',
-    'CAN': 'Cancha Acústica de la ESPAM-MFL',
-    'COL': 'Coliseo ESPAM MFL',
-    'FMA': 'Facultad de Medio Ambiente',
-    'TUR': 'Carrera de Turismo',
-    'HOT': 'Hotel Higuerón',
-    'GAS': 'Carrera de Gastronomía',
-    'COM': 'Carrera de Computación',
-    'POS': 'Posgrado',
-    'BIB': 'Edificio Biblioteca',
-    'ADM2': 'Edificio Administrativo', // Lo nombro ADM2 para no chocar con ADM
-  };
+  // 🎙️ Variables de control para el reconocimiento de voz
+  late stt.SpeechToText _speech;
+  bool _esEscuchando = false;
+  String _textoDictado = "";
 
-  // 🧠 Diccionario de sinónimos ampliado con las nuevas ubicaciones
-  final Map<String, List<String>> sinonimos = {
-    'VET': [
-      'veterinaria',
-      'medicina veterinaria',
-      'facultad de veterinaria',
-      'bloque de veterinaria',
-      'vet'
-    ],
-    'INC': [
-      'incubadora',
-      'planta incubadora',
-      'incubacion',
-      'incubación',
-      'inc'
-    ],
-    'ADM': [
-      'administracion',
-      'administración',
-      'empresas',
-      'administracion de empresas',
-      'bloque de administracion',
-      'adm'
-    ],
-    'AUD': [
-      'auditorio',
-      'jacinta lopez',
-      'jacinta lópez',
-      'auditorio jacinta',
-      'aud'
-    ],
-    'AGR': [
-      'agricola',
-      'agrícola',
-      'ingenieria agricola',
-      'ingeniería agrícola',
-      'agr'
-    ],
-    'LAB': [
-      'laboratorio',
-      'agropecuaria',
-      'laboratorio de agropecuaria',
-      'lab'
-    ],
-    'KAA': [
-      'kaacao',
-      'cacao',
-      'fabrica kaacao',
-      'fábrica kaacao',
-      'kaa'
-    ],
-    'CAN': [
-      'cancha',
-      'acustica',
-      'acústica',
-      'cancha acustica',
-      'cancha acústica',
-      'concha acustica',
-      'can'
-    ],
-    'COL': [
-      'coliseo',
-      'coliseo espam',
-      'coliseo mfl',
-      'col'
-    ],
-    'FMA': [
-      'medio ambiente',
-      'facultad de medio ambiente',
-      'ambiental',
-      'fma'
-    ],
-    'TUR': [
-      'turismo',
-      'carrera de turismo',
-      'tur'
-    ],
-    'HOT': [
-      'hotel',
-      'higueron',
-      'higuerón',
-      'hotel higueron',
-      'hot'
-    ],
-    'GAS': [
-      'gastronomia',
-      'gastronomía',
-      'carrera de gastronomia',
-      'gas'
-    ],
-    'COM': [
-      'computacion',
-      'computación',
-      'carrera de computacion',
-      'sistemas',
-      'com'
-    ],
-    'POS': [
-      'posgrado',
-      'postgrado',
-      'pos'
-    ],
-    'BIB': [
-      'biblioteca',
-      'edificio biblioteca',
-      'bib'
-    ],
-    'ADM2': [
-      'edificio administrativo',
-      'administrativo',
-      'edificio admin'
-    ],
-  };
-
-    // 🛣️ Grafo de conexiones peatonales generado con Haversine (umbral 300m + puente LAB↔HOT)
-  final Map<String, List<Map<String, dynamic>>> grafo = {
-    'VET': [
-      {'to': 'INC', 'costo': 70.0},
-      {'to': 'AGR', 'costo': 140.0},
-    ],
-    'INC': [
-      {'to': 'VET', 'costo': 70.0},
-      {'to': 'ADM', 'costo': 200.0},
-    ],
-    'ADM': [
-      {'to': 'INC', 'costo': 200.0},
-      {'to': 'AUD', 'costo': 40.0},
-    ],
-    'AUD': [
-      {'to': 'ADM', 'costo': 40.0},
-      {'to': 'AGR', 'costo': 90.0},
-    ],
-    'AGR': [
-      {'to': 'AUD', 'costo': 90.0},
-      {'to': 'VET', 'costo': 140.0},
-      {'to': 'LAB', 'costo': 1100.0},
-    ],
-    'LAB': [
-      {'to': 'AGR', 'costo': 1100.0},
-      {'to': 'KAA', 'costo': 70.0},
-      {'to': 'HOT', 'costo': 568.3}, // Puente hacia la zona oeste
-    ],
-    'KAA': [
-      {'to': 'LAB', 'costo': 70.0},
-      {'to': 'CAN', 'costo': 230.0},
-      {'to': 'FMA', 'costo': 252.1},
-      {'to': 'TUR', 'costo': 263.3},
-    ],
-    'CAN': [
-      {'to': 'KAA', 'costo': 230.0},
-      {'to': 'COL', 'costo': 216.4},
-      {'to': 'FMA', 'costo': 59.3},
-      {'to': 'TUR', 'costo': 47.8},
-    ],
-    'COL': [
-      {'to': 'CAN', 'costo': 216.4},
-      {'to': 'FMA', 'costo': 243.9},
-      {'to': 'TUR', 'costo': 230.5},
-    ],
-    'FMA': [
-      {'to': 'CAN', 'costo': 59.3},
-      {'to': 'COL', 'costo': 243.9},
-      {'to': 'TUR', 'costo': 16.4},
-      {'to': 'KAA', 'costo': 252.1},
-    ],
-    'TUR': [
-      {'to': 'CAN', 'costo': 47.8},
-      {'to': 'COL', 'costo': 230.5},
-      {'to': 'FMA', 'costo': 16.4},
-      {'to': 'KAA', 'costo': 263.3},
-    ],
-    'HOT': [
-      {'to': 'LAB', 'costo': 568.3},
-      {'to': 'COM', 'costo': 98.3},
-      {'to': 'BIB', 'costo': 148.2},
-      {'to': 'GAS', 'costo': 302.8},
-    ],
-    'GAS': [
-      {'to': 'HOT', 'costo': 302.8},
-      {'to': 'COM', 'costo': 216.4},
-      {'to': 'POS', 'costo': 174.5},
-    ],
-    'COM': [
-      {'to': 'HOT', 'costo': 98.3},
-      {'to': 'GAS', 'costo': 216.4},
-      {'to': 'POS', 'costo': 79.1},
-      {'to': 'ADM2', 'costo': 190.8},
-      {'to': 'BIB', 'costo': 71.4},
-    ],
-    'POS': [
-      {'to': 'GAS', 'costo': 174.5},
-      {'to': 'COM', 'costo': 79.1},
-      {'to': 'BIB', 'costo': 54.3},
-    ],
-    'BIB': [
-      {'to': 'HOT', 'costo': 148.2},
-      {'to': 'COM', 'costo': 71.4},
-      {'to': 'POS', 'costo': 54.3},
-      {'to': 'ADM2', 'costo': 135.4},
-    ],
-    'ADM2': [
-      {'to': 'COM', 'costo': 190.8},
-      {'to': 'BIB', 'costo': 135.4},
-    ],
-  };
-
-  // 🌐 Coordenadas GPS reales (Latitud, Longitud) actualizadas con todas las ubicaciones
-  final Map<String, (double, double)> coordenadas = {
-    'VET': (-0.8191042309287083, -80.18070584205533),
-    'INC': (-0.8184793400393129, -80.18068170216947),
-    'ADM': (-0.8190613199660038, -80.17890071539665),
-    'AUD': (-0.8193295134504462, -80.17861908345724),
-    'AGR': (-0.8193054588772872, -80.17946284266132),
-    'LAB': (-0.8275175347704268, -80.18704880030674),
-    'KAA': (-0.826897170957849, -80.18705667929609),
-    'CAN': (-0.8289493495008273, -80.18582805994684),
-    'COL': (-0.8306550555082427, -80.18489465120184),
-    'FMA': (-0.8285344886942664, -80.18549412488781),
-    'TUR': (-0.828682413814722, -80.18548515626249),
-    'HOT': (-0.8274703625918673, -80.18194846667554),
-    'GAS': (-0.8252476162378222, -80.1835522055805),
-    'COM': (-0.8266171478177358, -80.18216960805292),
-    'POS': (-0.8259043539873512, -80.18212996425095),
-    'BIB': (-0.826156455432419, -80.18171422184288),
-    'ADM2': (-0.8262560220902032, -80.18050823362339),
-  };
-
-  // Sugerencias rápidas (se pueden ampliar cuando el grafo esté completo)
-    final List<Map<String, String>> sugerencias = [
-    {'text': 'Veterinaria → Auditorio', 'from': 'VET', 'to': 'AUD'},
-    {'text': 'Admin → Agrícola', 'from': 'ADM', 'to': 'AGR'},
-    {'text': 'Incubadora → Laboratorio', 'from': 'INC', 'to': 'LAB'},
-    {'text': 'Kaacao → Cancha', 'from': 'KAA', 'to': 'CAN'},
-    {'text': 'Computación → Coliseo', 'from': 'COM', 'to': 'COL'},
-    {'text': 'Biblioteca → Turismo', 'from': 'BIB', 'to': 'TUR'},
+  final List<Map<String, String>> sugerencias = [
+    {'text': '🏫 Vet ➔ Auditorio', 'from': 'VET', 'to': 'AUD'},
+    {'text': '💼 Admin ➔ Agrícola', 'from': 'ADM', 'to': 'AGR'},
+    {'text': '💻 Comp ➔ Coliseo', 'from': 'COM', 'to': 'COL'},
   ];
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 500), () {
-      setState(() {
-        _messages.add({
-          'type': 'bot',
-          'text': '👋 ¡Hola! Soy el asistente de rutas de la ESPAM-MFL.\n\n'
-              'Puedes hablarme naturalmente:\n'
-              '• "Quiero ir de veterinaria al auditorio"\n'
-              '• "¿Cómo llego a la cancha desde administración?"\n'
-              '• "Ruta de la incubadora hasta agrícola"\n\n'
-              'También puedes usar las sugerencias rápidas de abajo.',
+    _speech = stt.SpeechToText(); // Inicializar motor de voz
+    
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _messages.add({
+            'type': 'bot',
+            'text': '¡Hola! 🤖 Soy tu asistente de rutas.\n\nPuedes escribirme o presionar el **micrófono** abajo para decirme a dónde quieres ir de forma hablada.',
+          });
         });
-      });
+      }
     });
+  }
+
+  // 🎙️ Función para activar/desactivar el micrófono (Optimizada para Web/Chrome)
+  void _escucharVoz() async {
+    if (!_esEscuchando) {
+      bool disponible = await _speech.initialize(
+        onStatus: (val) {
+          // Fallback por si el usuario cancela manualmente
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _esEscuchando = false);
+          }
+        },
+        onError: (val) => setState(() => _esEscuchando = false),
+      );
+
+      if (disponible) {
+        setState(() {
+          _esEscuchando = true;
+          _textoDictado = "";
+        });
+        
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              _textoDictado = val.recognizedWords;
+              _controller.text = _textoDictado; // Muestra el texto mientras hablas
+            });
+
+            // ✨ SOLUCIÓN PARA CHROME: Si detecta que la oración finalizó
+            if (val.finalResult && _textoDictado.isNotEmpty) {
+              setState(() => _esEscuchando = false);
+              _speech.stop(); // Apagamos el micro
+              _enviarMensaje(); // Enviamos el mensaje automáticamente
+            }
+          },  
+        );
+      }
+    } else {
+      // Si el usuario presiona el botón para detenerlo manualmente
+      setState(() => _esEscuchando = false);
+      _speech.stop();
+      if (_textoDictado.isNotEmpty) {
+        _enviarMensaje();
+      }
+    }
   }
 
   void _enviarMensaje({String? textoPredefinido}) {
@@ -310,186 +120,129 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() {
       _messages.add({'type': 'user', 'text': texto});
+      _estaEscribiendo = true;
     });
 
     if (textoPredefinido == null) _controller.clear();
+    _textoDictado = "";
+    _animatedScroll();
 
-    Future.delayed(const Duration(milliseconds: 600), () {
+    Future.delayed(const Duration(milliseconds: 1200), () {
       String respuesta = procesarMensaje(texto.toLowerCase());
-      setState(() {
-        _messages.add({'type': 'bot', 'text': respuesta});
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add({'type': 'bot', 'text': respuesta});
+          _estaEscribiendo = false;
+        });
+        _animatedScroll();
+      }
+    });
+  }
+
+  void _animatedScroll() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
     });
   }
 
   String procesarMensaje(String msg) {
-  String textoLimpio = msg.toLowerCase().trim();
-  String? inicio, destino;
+    String textoLimpio = msg.toLowerCase().trim();
+    String? inicio, destino;
+    Map<String, int> lugaresEncontrados = {};
 
-  Map<String, int> lugaresEncontrados = {};
-
-  sinonimos.forEach((nodo, listaSinonimos) {
-    for (var sinonimo in listaSinonimos) {
-      int index = textoLimpio.indexOf(sinonimo.toLowerCase());
-      if (index != -1) {
-        if (!lugaresEncontrados.containsKey(nodo)) {
-          lugaresEncontrados[nodo] = index;
+    sinonimos.forEach((nodo, listaSinonimos) {
+      for (var sinonimo in listaSinonimos) {
+        int index = textoLimpio.indexOf(sinonimo.toLowerCase());
+        if (index != -1) {
+          if (!lugaresEncontrados.containsKey(nodo)) {
+            lugaresEncontrados[nodo] = index;
+          }
+          break;
         }
-        break;
       }
-    }
-  });
+    });
 
-  if (lugaresEncontrados.length < 2) {
-    List<String> palabras = textoLimpio
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .split(' ')
-        .where((p) => p.isNotEmpty)
-        .toList();
-
-    for (var palabra in palabras) {
-      for (var key in nombres.keys) {
-        if (palabra == key.toLowerCase() &&
-            !lugaresEncontrados.containsKey(key)) {
-          lugaresEncontrados[key] = textoLimpio.indexOf(palabra);
+    if (lugaresEncontrados.length < 2) {
+      List<String> palabras = textoLimpio.replaceAll(RegExp(r'[^\w\s]'), '').split(' ').where((p) => p.isNotEmpty).toList();
+      for (var palabra in palabras) {
+        for (var key in nombres.keys) {
+          if (palabra == key.toLowerCase() && !lugaresEncontrados.containsKey(key)) {
+            lugaresEncontrados[key] = textoLimpio.indexOf(palabra);
+          }
         }
       }
     }
-  }
 
-  if (lugaresEncontrados.length >= 2) {
-    var nodos = lugaresEncontrados.keys.toList();
-    String nodoX = nodos[0];
-    String nodoY = nodos[1];
+    if (lugaresEncontrados.length >= 2) {
+      var nodos = lugaresEncontrados.keys.toList();
+      String nodoX = nodos[0]; String nodoY = nodos[1];
+      int posX = lugaresEncontrados[nodoX]!; int posY = lugaresEncontrados[nodoY]!;
 
-    // ----- NUEVA LÓGICA de detección (corregida) -----
-    int posX = lugaresEncontrados[nodoX]!;
-    int posY = lugaresEncontrados[nodoY]!;
+      final conectoresOrigen = ['desde', 'salgo de', 'parto de', 'vengo de', 'de'];
+      final conectoresDestino = ['hasta el', 'hasta la', 'para el', 'para la', 'hasta', 'para', 'hacia', 'al', 'a'];
 
-    final conectoresOrigen = ['desde', 'salgo de', 'parto de', 'vengo de', 'de'];
-    final conectoresDestino = [
-      'hasta el', 'hasta la', 'para el', 'para la', 'hasta', 'para', 'hacia', 'al', 'a'
-    ];
-
-    // Función auxiliar: busca si justo antes de un lugar hay un conector
-    String? conectorAntesDe(String lugar, List<String> conectores) {
-      int idx = lugaresEncontrados[lugar]!;
-      int startSearch = idx - 30;
-      if (startSearch < 0) startSearch = 0;
-      String fragmento = textoLimpio.substring(startSearch, idx);
-      // Ordenamos por longitud descendente para preferir conectores más largos
-      for (var con in conectores) {
-        if (fragmento.endsWith(con + ' ') || fragmento.endsWith(con)) {
-          return con;
+      String? conectorAntesDe(String lugar, List<String> conectores) {
+        int idx = lugaresEncontrados[lugar]!;
+        int startSearch = idx - 30 < 0 ? 0 : idx - 30;
+        String fragmento = textoLimpio.substring(startSearch, idx);
+        for (var con in conectores) {
+          if (fragmento.endsWith('$con ') || fragmento.endsWith(con)) return con;
         }
+        return null;
       }
-      return null;
-    }
 
-    String? conectorXOrigen = conectorAntesDe(nodoX, conectoresOrigen);
-    String? conectorYOrigen = conectorAntesDe(nodoY, conectoresOrigen);
-    String? conectorXDestino = conectorAntesDe(nodoX, conectoresDestino);
-    String? conectorYDestino = conectorAntesDe(nodoY, conectoresDestino);
-
-    // Decidir origen/destino según los conectores encontrados
-    if (conectorXOrigen != null) {
-      inicio = nodoX;
-      destino = nodoY;
-    } else if (conectorYOrigen != null) {
-      inicio = nodoY;
-      destino = nodoX;
-    } else if (conectorXDestino != null) {
-      inicio = nodoY;
-      destino = nodoX;
-    } else if (conectorYDestino != null) {
-      inicio = nodoX;
-      destino = nodoY;
-    } else {
-      // Fallback: el lugar que aparece primero en el texto es el origen
-      if (posX < posY) {
-        inicio = nodoX;
-        destino = nodoY;
+      if (conectorAntesDe(nodoX, conectoresOrigen) != null) {
+        inicio = nodoX; destino = nodoY;
+      } else if (conectorAntesDe(nodoY, conectoresOrigen) != null) {
+        inicio = nodoY; destino = nodoX;
+      } else if (conectorAntesDe(nodoX, conectoresDestino) != null) {
+        inicio = nodoY; destino = nodoX;
+      } else if (conectorAntesDe(nodoY, conectoresDestino) != null) {
+        inicio = nodoX; destino = nodoY;
       } else {
-        inicio = nodoY;
-        destino = nodoX;
+        if (posX < posY) {
+          inicio = nodoX; destino = nodoY;
+        } else {
+          inicio = nodoY; destino = nodoX;
+        }
       }
     }
-    // ----- FIN NUEVA LÓGICA -----
-  }
 
-  if (inicio != null && destino != null && inicio != destino) {
-    final resultado = algoritmoAEstrella(inicio, destino);
-    List<String> ruta = resultado['ruta'];
+    if (inicio != null && destino != null && inicio != destino) {
+      final resultado = algoritmoAEstrella(inicio, destino);
+      List<String> ruta = resultado['ruta'];
 
-    if (ruta.isEmpty) {
-      return "No se pudo encontrar una ruta entre ${nombres[inicio]} y ${nombres[destino]}.\n"
-          "Verifica que exista conexión en el grafo para estos puntos. "
-          "Algunas ubicaciones nuevas aún no tienen caminos peatonales definidos.";
+      if (ruta.isEmpty) {
+        return "ROUTE_NOT_FOUND::${nombres[inicio]}::${nombres[destino]}";
+      }
+
+      List<String> rutaNombres = ruta.map((n) => nombres[n] ?? n).toList();
+      String pasos = rutaNombres.join(" ➔ ");
+      return "ROUTE_SUCCESS::${nombres[inicio]}::${nombres[destino]}::$pasos::${resultado['costo'].toStringAsFixed(1)}";
     }
 
-    List<String> rutaNombres = ruta.map((n) => nombres[n] ?? n).toList();
-
-    String rutaTexto = '';
-    for (int i = 0; i < rutaNombres.length; i++) {
-      String flecha = i < rutaNombres.length - 1 ? ' ⬇️' : ' 🎯';
-      rutaTexto += "${i + 1}. ${rutaNombres[i]}$flecha\n";
+    if (lugaresEncontrados.length == 1) {
+      return "NEED_INFO::${nombres[lugaresEncontrados.keys.first]}";
     }
 
-    return "🤖 **Ruta interpretada con éxito**\n\n"
-        "📍 **Desde:** ${nombres[inicio]}\n"
-        "🏁 **Hasta:** ${nombres[destino]}\n\n"
-        "🗺️ **Recorrido óptimo:**\n"
-        "$rutaTexto\n"
-        "📏 **Distancia aproximada:** ${resultado['costo'].toStringAsFixed(1)} metros\n\n"
-        "✨ *Cálculo basado en coordenadas satelitales reales.*";
+    return "ERROR_NOT_UNDERSTOOD";
   }
 
-  if (lugaresEncontrados.length == 1) {
-    String lugar = nombres[lugaresEncontrados.keys.first]!;
-    return "🤔 Entiendo que te refieres a **$lugar**, pero necesito saber tanto el punto de origen como el de destino.\n\n"
-        "Por ejemplo: 'Quiero ir de Veterinaria a $lugar'";
-  }
-
-  return "No logré entender la ruta. Inténtalo de esta forma:\n\n"
-      "• 'Quiero ir de administración a agrícola'\n"
-      "• '¿Cómo voy desde Kaacao hasta la cancha?'\n"
-      "• 'Ruta de VET a AUD'\n\n"
-      "También puedes presionar los botones de sugerencia rápida 👇";
-}
-
-  // Fórmula de Haversine para calcular distancia real en metros
   double _calcularHeuristica(String nodoActual, String nodoDestino) {
     final p1 = coordenadas[nodoActual]!;
     final p2 = coordenadas[nodoDestino]!;
-
-    double lat1 = p1.$1;
-    double lon1 = p1.$2;
-    double lat2 = p2.$1;
-    double lon2 = p2.$2;
-
-    const double R = 6371000;
-
-    double dLat = (lat2 - lat1) * math.pi / 180.0;
-    double dLon = (lon2 - lon1) * math.pi / 180.0;
-
+    double dLat = (p2.$1 - p1.$1) * math.pi / 180.0;
+    double dLon = (p2.$2 - p1.$2) * math.pi / 180.0;
     double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(lat1 * math.pi / 180.0) *
-            math.cos(lat2 * math.pi / 180.0) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-
-    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-
-    return R * c;
+        math.cos(p1.$1 * math.pi / 180.0) * math.cos(p2.$1 * math.pi / 180.0) * math.sin(dLon / 2) * math.sin(dLon / 2);
+    return 6371000 * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)));
   }
 
   Map<String, dynamic> algoritmoAEstrella(String start, String end) {
-    final gScore = <String, double>{
-      for (var k in grafo.keys) k: double.infinity,
-    };
-    final fScore = <String, double>{
-      for (var k in grafo.keys) k: double.infinity,
-    };
+    final gScore = <String, double>{for (var k in grafo.keys) k: double.infinity};
+    final fScore = <String, double>{for (var k in grafo.keys) k: double.infinity};
     final prev = <String, String?>{};
     final openSet = <(double, String)>[];
 
@@ -500,20 +253,15 @@ class _ChatScreenState extends State<ChatScreen> {
     while (openSet.isNotEmpty) {
       openSet.sort((a, b) => a.$1.compareTo(b.$1));
       final (_, u) = openSet.removeAt(0);
-
       if (u == end) break;
-
       if (!grafo.containsKey(u)) continue;
 
       for (var v in grafo[u]!) {
         double tentativeGScore = gScore[u]! + v['costo'];
-
         if (tentativeGScore < gScore[v['to']]!) {
           prev[v['to']] = u;
           gScore[v['to']] = tentativeGScore;
-          fScore[v['to']] =
-              gScore[v['to']]! + _calcularHeuristica(v['to'], end);
-
+          fScore[v['to']] = gScore[v['to']]! + _calcularHeuristica(v['to'], end);
           if (!openSet.any((element) => element.$2 == v['to'])) {
             openSet.add((fScore[v['to']]!, v['to']));
           }
@@ -528,114 +276,257 @@ class _ChatScreenState extends State<ChatScreen> {
       current = prev[current];
     }
     path = path.reversed.toList();
-
     return {'ruta': path.length > 1 ? path : [], 'costo': gScore[end]!};
-  }
-
-  void _limpiarChat() {
-    setState(() {
-      _messages.clear();
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('🤖 Chatbot ESPAM-MFL'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Text('ESPAM-MFL Navegación', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text(_esEscuchando ? '🎙️ Escuchando tu voz...' : 'Inteligencia de Rutas Críticas', style: TextStyle(fontSize: 11, color: _esEscuchando ? Colors.greenAccent : Colors.white.withAlpha((0.7 * 255).round()))),
+          ],
+        ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: _limpiarChat,
-            tooltip: "Limpiar chat",
-          ),
-        ],
+        backgroundColor: _esEscuchando ? const Color(0xff0a2540) : theme.colorScheme.primary,
+        elevation: 0,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              reverse: true,
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[_messages.length - 1 - index];
-                bool esUsuario = msg['type'] == 'user';
-                return Align(
-                  alignment: esUsuario
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    padding: const EdgeInsets.all(16),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: esUsuario ? Colors.indigo[600] : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      msg['text']!,
-                      style: TextStyle(
-                        color: esUsuario ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                );
-              },
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Listado de Mensajes
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                reverse: true,
+                itemCount: _messages.length + (_estaEscribiendo ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (_estaEscribiendo && index == 0) return _buildTypingIndicator(theme);
+                  final actualIndex = _estaEscribiendo ? index - 1 : index;
+                  final msg = _messages[_messages.length - 1 - actualIndex];
+                  bool esUsuario = msg['type'] == 'user';
+                  String rawText = msg['text']!;
+
+                  if (!esUsuario && rawText.startsWith("ROUTE_SUCCESS")) {
+                    var data = rawText.split("::");
+                    return _buildRouteCard(theme, data[1], data[2], data[3], data[4]);
+                  }
+                  return _buildStandardBubble(theme, esUsuario, rawText);
+                },
+              ),
             ),
+
+            // Chips Horizontales de Sugerencias
+            if (!_esEscuchando) _buildSuggestionsCarousel(theme),
+
+            // ⌨️ Consola de Entrada Premium Modularizada (Soporta Voz y Texto)
+            _buildInputConsole(theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionsCarousel(ThemeData theme) {
+    return Container(
+      height: 44,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        children: sugerencias.map((sug) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: ActionChip(
+              label: Text(sug['text']!, style: TextStyle(color: theme.colorScheme.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+              backgroundColor: Colors.white,
+              elevation: 1,
+              shadowColor: Colors.black.withAlpha((0.1 * 255).round()),
+              side: BorderSide(color: theme.colorScheme.primary.withAlpha((0.15 * 255).round())),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              onPressed: () => _enviarMensaje(textoPredefinido: "${sug['from']} a ${sug['to']}"),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // Consola de entrada de datos adaptativa
+  Widget _buildInputConsole(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _esEscuchando ? theme.colorScheme.primary.withAlpha((0.05 * 255).round()) : Colors.white,
+          borderRadius: BorderRadius.circular(32),
+          border: _esEscuchando ? Border.all(color: theme.colorScheme.primary.withAlpha((0.3 * 255).round()), width: 1.5) : null,
+          boxShadow: [
+            BoxShadow(color: Colors.black.withAlpha((0.05 * 255).round()), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Botón de micrófono izquierdo interactivo
+            IconButton(
+              icon: Icon(
+                _esEscuchando ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: _esEscuchando ? Colors.redAccent : Colors.black54,
+                size: 24,
+              ),
+              onPressed: _escucharVoz,
+            ),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                enabled: !_estaEscribiendo && !_esEscuchando,
+                textCapitalization: TextCapitalization.sentences,
+                style: TextStyle(fontSize: 15, color: _esEscuchando ? theme.colorScheme.primary : Colors.black87),
+                decoration: InputDecoration(
+                  hintText: _esEscuchando ? "Escuchando... habla ahora" : "Ej: De Veterinaria al Coliseo",
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: _esEscuchando ? theme.colorScheme.primary.withAlpha((0.5 * 255).round()) : Colors.black38, fontSize: 14),
+                ),
+                onSubmitted: (_) => _enviarMensaje(),
+              ),
+            ),
+            if (!_esEscuchando)
+              Container(
+                margin: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: _estaEscribiendo ? Colors.grey : theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                  onPressed: _estaEscribiendo ? null : () => _enviarMensaje(),
+                ),
+              ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandardBubble(ThemeData theme, bool esUsuario, String texto) {
+    String renderText = texto
+        .replaceAll("ROUTE_NOT_FOUND::", "")
+        .replaceAll("NEED_INFO::", "")
+        .replaceAll("ERROR_NOT_UNDERSTOOD", "No entendí la ruta hablada. Intenta decir algo claro como: 'Llevarme de administración a agrícola'.");
+
+    return Align(
+      alignment: esUsuario ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        decoration: BoxDecoration(
+          color: esUsuario ? theme.colorScheme.primary : Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(esUsuario ? 18 : 4),
+            bottomRight: Radius.circular(esUsuario ? 4 : 18),
           ),
+          boxShadow: [BoxShadow(color: Colors.black.withAlpha((0.02 * 255).round()), blurRadius: 4, offset: const Offset(0, 2))],
+        ),
+        child: Text(renderText, style: TextStyle(color: esUsuario ? Colors.white : Colors.black87, fontSize: 14.5, height: 1.35)),
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator(ThemeData theme) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+        child: SizedBox(
+          width: 32,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(3, (index) {
+              return Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: theme.colorScheme.primary.withAlpha((0.4 * 255).round()), shape: BoxShape.circle),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRouteCard(ThemeData theme, String origen, String destino, String pasos, String distancia) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.secondary.withAlpha((0.2 * 255).round()), width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withAlpha((0.03 * 255).round()), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-            padding: const EdgeInsets.all(12),
-            color: Colors.grey[100],
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: sugerencias
-                  .map(
-                    (sug) => ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo[100],
-                        foregroundColor: Colors.indigo[900],
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                      ),
-                      onPressed: () => _enviarMensaje(
-                        textoPredefinido: "${sug['from']} a ${sug['to']}",
-                      ),
-                      child: Text(sug['text']!),
-                    ),
-                  )
-                  .toList(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.secondary.withAlpha((0.08 * 255).round()),
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.assistant_direction_rounded, color: theme.colorScheme.secondary, size: 20),
+                const SizedBox(width: 8),
+                Text('Ruta Peatonal Trazada', style: TextStyle(color: theme.colorScheme.secondary, fontWeight: FontWeight.bold, fontSize: 13.5)),
+              ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: "Ej: Quiero ir de veterinaria al auditorio",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    onSubmitted: (_) => _enviarMensaje(),
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.radio_button_checked, color: Colors.blue, size: 16),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(origen, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87))),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                FloatingActionButton(
-                  onPressed: () => _enviarMensaje(),
-                  child: const Icon(Icons.send),
+                Container(margin: const EdgeInsets.only(left: 7), height: 20, width: 2, color: Colors.grey[300]),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, color: theme.colorScheme.secondary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(destino, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87))),
+                  ],
+                ),
+                const Divider(height: 24),
+                const Text('RECORRIDO ÓPTIMO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black38, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                Text(pasos, style: TextStyle(fontSize: 13.5, color: Colors.grey[800], height: 1.4)),
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Distancia Calculada:', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: theme.colorScheme.primary.withAlpha((0.08 * 255).round()), borderRadius: BorderRadius.circular(12)),
+                      child: Text('$distancia metros', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
+                  ],
                 ),
               ],
             ),
