@@ -1,8 +1,4 @@
-// lib/services/voice_recognition_service.dart
-//
-// Encapsula toda la interacción con el paquete `speech_to_text`, dejando a
-// la UI únicamente la responsabilidad de mostrar el estado (escuchando o
-// no) y reaccionar a los resultados.
+
 
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;

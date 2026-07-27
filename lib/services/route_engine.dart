@@ -96,6 +96,7 @@ abstract final class RouteEngine {
         destinoNombre: nombres[destino]!,
         pasos: resultado.ruta.map((n) => nombres[n] ?? n).toList(),
         distanciaMetros: resultado.costo,
+        nodos: resultado.ruta,
       );
     }
 

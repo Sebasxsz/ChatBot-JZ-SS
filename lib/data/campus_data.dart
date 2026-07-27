@@ -173,3 +173,40 @@ const Map<String, Coord> coordenadas = {
   'BIB': (lat: -0.826156455432419, lon: -80.18171422184288),
   'ADM2': (lat: -0.8262560220902032, lon: -80.18050823362339),
 };
+
+// --- Waypoints para dibujar los caminos sobre el mapa ----------------------
+//
+// Esto es puramente visual: el algoritmo A* nunca lee este mapa, solo usa
+// `grafo` con sus costos de siempre. `_waypoints` únicamente le dice a la
+// pantalla del mapa por dónde dibujar la línea de cada conexión, para que
+// siga el sendero real en vez de cortar en línea recta.
+//
+// Las conexiones que NO aparezcan aquí se dibujan como línea recta entre
+// los dos edificios (razonable para las conexiones cortas). Se van
+// agregando a medida que se levantan las coordenadas reales sobre
+// OpenStreetMap (ver el plan del día 1).
+//
+// La clave es "ORIGEN-DESTINO"; no hace falta repetirla en ambos sentidos,
+// `waypointsPara` ya busca en los dos órdenes posibles.
+const Map<String, List<Coord>> _waypoints = {
+  // Ejemplo de formato una vez que se levanten las coordenadas reales:
+  // 'AGR-LAB': [
+  //   (lat: -0.820500, lon: -80.181200),
+  //   (lat: -0.822800, lon: -80.183900),
+  //   (lat: -0.825100, lon: -80.186000),
+  // ],
+};
+
+/// Puntos intermedios para dibujar el camino entre [a] y [b], en ese orden,
+/// sin importar en qué sentido se hayan guardado originalmente. Si no hay
+/// waypoints registrados para esa conexión todavía, devuelve una lista
+/// vacía (línea recta).
+List<Coord> waypointsPara(String a, String b) {
+  final directos = _waypoints['$a-$b'];
+  if (directos != null) return directos;
+
+  final inversos = _waypoints['$b-$a'];
+  if (inversos != null) return inversos.reversed.toList();
+
+  return const [];
+}
