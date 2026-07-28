@@ -3,10 +3,9 @@
 // Mapa base de OpenStreetMap centrado en el campus, con un ícono
 // isométrico en cada uno de los 17 edificios (día 3).
 //
-// Día 4: si se le pasa una [ruta] ya calculada por RouteEngine, además
-// dibuja la línea del recorrido sobre el mapa (usando `waypointsPara` de
-// `campus_data.dart` para seguir el camino real, no una línea recta) y
-// encuadra la cámara sobre esa ruta en vez de sobre todo el campus.
+// Si se le pasa una [ruta] ya calculada por RouteEngine, además dibuja la
+// línea del recorrido sobre el mapa (día 4) y distingue visualmente
+// origen, destino y puntos intermedios (día 5).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -16,6 +15,20 @@ import '../data/campus_data.dart';
 import '../models/chat_models.dart';
 import '../utils/color_utils.dart';
 import '../widgets/isometric_building_icon.dart';
+
+/// A qué tipo de ícono corresponde cada sigla del campus. Las siglas no
+/// listadas usan el tipo genérico por defecto.
+BuildingType _tipoDeEdificio(String sigla) => switch (sigla) {
+  'AUD' => BuildingType.auditorio,
+  'COL' => BuildingType.coliseo,
+  'LAB' => BuildingType.laboratorio,
+  _ => BuildingType.generico,
+};
+
+/// Qué papel juega un edificio respecto a la ruta que se está mostrando
+/// (si hay alguna). Determina tanto el color del ícono como el mensaje
+/// que se muestra al tocarlo.
+enum _RolMarcador { origen, destino, intermedio, fueraDeRuta, sinRutaActiva }
 
 class CampusMapScreen extends StatefulWidget {
   /// Ruta ya calculada para mostrar dibujada sobre el mapa. Si es `null`,
@@ -49,11 +62,9 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
       ? const []
       : _construirPuntosDeRuta(widget.ruta!.nodos);
 
-  // Siglas de los edificios que forman parte de la ruta, para resaltarlos
-  // con un color distinto al resto.
-  late final Set<String> _nodosDestacados = widget.ruta?.nodos.toSet() ?? {};
-
-  // Si hay ruta, se encuadra sobre ella; si no, sobre todo el campus.
+  // Si hay ruta, se encuadra sobre ella; si no, sobre todo el campus. Se
+  // reutiliza tanto al abrir la pantalla como cuando el usuario toca el
+  // botón de recentrar.
   late final LatLngBounds _limitesEncuadre = _puntosRuta.isNotEmpty
       ? LatLngBounds.fromPoints(_puntosRuta)
       : _limitesCampus;
@@ -81,6 +92,22 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
     return puntos;
   }
 
+  /// Determina el rol de [sigla] respecto a la ruta activa (si hay una).
+  _RolMarcador _rolDe(String sigla) {
+    final ruta = widget.ruta;
+    if (ruta == null) return _RolMarcador.sinRutaActiva;
+    if (sigla == ruta.nodos.first) return _RolMarcador.origen;
+    if (sigla == ruta.nodos.last) return _RolMarcador.destino;
+    if (ruta.nodos.contains(sigla)) return _RolMarcador.intermedio;
+    return _RolMarcador.fueraDeRuta;
+  }
+
+  void _encuadrarVista() {
+    _mapController.fitCamera(
+      CameraFit.bounds(bounds: _limitesEncuadre, padding: const EdgeInsets.all(48)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -102,19 +129,17 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton.small(
+        onPressed: _encuadrarVista,
+        tooltip: ruta != null ? 'Centrar en la ruta' : 'Centrar en el campus',
+        child: const Icon(Icons.center_focus_strong),
+      ),
       body: FlutterMap(
         mapController: _mapController,
         options: MapOptions(
           initialCenter: _limitesEncuadre.center,
           initialZoom: 17,
-          onMapReady: () {
-            _mapController.fitCamera(
-              CameraFit.bounds(
-                bounds: _limitesEncuadre,
-                padding: const EdgeInsets.all(48),
-              ),
-            );
-          },
+          onMapReady: _encuadrarVista,
         ),
         children: [
           TileLayer(
@@ -123,7 +148,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
             // app (el mismo applicationId de Android o bundle id de iOS).
             // OpenStreetMap exige un User-Agent identificable; si se deja
             // un valor genérico, pueden bloquear las peticiones.
-            userAgentPackageName: 'com.example.chatbot',
+            userAgentPackageName: 'ec.edu.espam.chatbot_rutas',
           ),
           if (_puntosRuta.isNotEmpty)
             PolylineLayer(
@@ -140,7 +165,7 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
               for (final entrada in _puntos.entries)
                 Marker(
                   point: entrada.value,
-                  width: 40,
+                  width: 58,
                   height: 46,
                   // Ancla el punto GPS en la base del ícono (como un pin),
                   // no en su centro. Si al probarlo lo ves desalineado
@@ -148,8 +173,8 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
                   alignment: Alignment.topCenter,
                   child: _MarcadorEdificio(
                     nombre: nombres[entrada.key] ?? entrada.key,
-                    destacado: _nodosDestacados.isEmpty ||
-                        _nodosDestacados.contains(entrada.key),
+                    tipo: _tipoDeEdificio(entrada.key),
+                    rol: _rolDe(entrada.key),
                   ),
                 ),
             ],
@@ -166,29 +191,43 @@ class _CampusMapScreenState extends State<CampusMapScreen> {
   }
 }
 
-/// Marcador de edificio: el ícono isométrico + su nombre al tocarlo.
+/// Marcador de edificio: el ícono isométrico + información al tocarlo.
 ///
-/// Cuando se está mostrando una ruta, los edificios que no forman parte
-/// de ella se atenúan, para que el recorrido resalte visualmente.
+/// El color y el mensaje cambian según [rol]: origen y destino se
+/// distinguen del resto de la ruta, y los edificios fuera del recorrido
+/// se atenúan para que el camino resalte visualmente.
 class _MarcadorEdificio extends StatelessWidget {
   final String nombre;
-  final bool destacado;
+  final BuildingType tipo;
+  final _RolMarcador rol;
 
-  const _MarcadorEdificio({required this.nombre, required this.destacado});
+  const _MarcadorEdificio({
+    required this.nombre,
+    required this.tipo,
+    required this.rol,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final colorBase = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final primario = theme.colorScheme.primary;
+
+    final (color, etiquetaRol) = switch (rol) {
+      _RolMarcador.origen => (Colors.blue.shade600, 'Origen'),
+      _RolMarcador.destino => (theme.colorScheme.secondary, 'Destino'),
+      _RolMarcador.intermedio => (primario, 'Parte del recorrido'),
+      _RolMarcador.fueraDeRuta => (primario.conOpacidad(0.35), null),
+      _RolMarcador.sinRutaActiva => (primario, null),
+    };
+
     return GestureDetector(
       onTap: () {
+        final mensaje = etiquetaRol == null ? nombre : '$nombre — $etiquetaRol';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(nombre), duration: const Duration(seconds: 2)),
+          SnackBar(content: Text(mensaje), duration: const Duration(seconds: 2)),
         );
       },
-      child: IsometricBuildingIcon(
-        size: 34,
-        color: destacado ? colorBase : colorBase.conOpacidad(0.35),
-      ),
+      child: IsometricBuildingIcon(size: 30, tipo: tipo, color: color),
     );
   }
 }
