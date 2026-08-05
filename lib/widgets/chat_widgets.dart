@@ -98,7 +98,13 @@ class TypingIndicator extends StatelessWidget {
 class RouteCard extends StatelessWidget {
   final RouteFound ruta;
 
-  const RouteCard({super.key, required this.ruta});
+  /// Si se provee, se muestra un botón para abrir esta ruta dibujada en
+  /// el mapa del campus. Se deja como callback (en vez de que RouteCard
+  /// conozca la pantalla del mapa directamente) para que este widget siga
+  /// siendo puramente de presentación, sin depender de la navegación.
+  final VoidCallback? onVerEnMapa;
+
+  const RouteCard({super.key, required this.ruta, this.onVerEnMapa});
 
   // Velocidad promedio de caminata (metros por segundo)
   static const double _velocidadCaminata = 1.4;
@@ -180,10 +186,6 @@ class RouteCard extends StatelessWidget {
                   for (int i = 1; i < pasos.length - 1; i++)
                     _buildPasoIntermedio(
                       nombre: pasos[i],
-                      // Distancia entre el paso anterior y este (no tenemos directamente,
-                      // podemos calcularla con la heurística o mostrar "—").
-                      // Para simplificar, mostraremos un guion porque no tenemos el desglose exacto.
-                      // Más adelante, al integrar mapa, podrás obtener las distancias reales.
                       distancia: null,
                     ),
                 ],
@@ -231,6 +233,22 @@ class RouteCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                // Botón para ver en el mapa (nuevo)
+                if (onVerEnMapa != null) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: onVerEnMapa,
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('Ver en el mapa'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                        side: BorderSide(color: theme.colorScheme.primary.conOpacidad(0.3)),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -39,11 +39,18 @@ class RouteFound extends RouteResult {
   final List<String> pasos;
   final double distanciaMetros;
 
+  /// Siglas internas de los edificios en el orden del recorrido (ej.
+  /// `['VET', 'INC', 'ADM', 'AUD']`). A diferencia de [pasos] (nombres
+  /// legibles para mostrar en el chat), esto es lo que se usa para buscar
+  /// coordenadas en `campus_data.dart` y dibujar la ruta sobre el mapa.
+  final List<String> nodos;
+
   const RouteFound({
     required this.origenNombre,
     required this.destinoNombre,
     required this.pasos,
     required this.distanciaMetros,
+    required this.nodos,
   });
 }
 

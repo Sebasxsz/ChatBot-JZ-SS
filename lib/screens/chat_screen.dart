@@ -12,6 +12,7 @@ import '../services/route_engine.dart';
 import '../services/voice_recognition_service.dart';
 import '../utils/color_utils.dart';
 import '../widgets/chat_widgets.dart';
+import 'campus_map_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -195,6 +196,17 @@ class _ChatScreenState extends State<ChatScreen> {
       centerTitle: true,
       backgroundColor: _escuchando ? const Color(0xff0a2540) : theme.colorScheme.primary,
       elevation: 0,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.map_outlined, color: Colors.white),
+          tooltip: 'Ver mapa del campus',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CampusMapScreen()),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -212,7 +224,12 @@ class _ChatScreenState extends State<ChatScreen> {
         final mensaje = _mensajes[_mensajes.length - 1 - indiceReal];
 
         if (mensaje.resultado case RouteFound ruta) {
-          return RouteCard(ruta: ruta);
+          return RouteCard(
+            ruta: ruta,
+            onVerEnMapa: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => CampusMapScreen(ruta: ruta)),
+            ),
+          );
         }
         return ChatBubble(esUsuario: mensaje.esUsuario, texto: mensaje.texto);
       },
