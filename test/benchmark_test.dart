@@ -1,14 +1,11 @@
 // ignore_for_file: avoid_print
 import 'package:flutter_test/flutter_test.dart';
-import 'package:chatbot/data/campus_data.dart';
+//import 'package:chatbot/data/campus_data.dart';
 import 'package:chatbot/models/chat_models.dart';
 import 'package:chatbot/services/route_engine.dart';
 
 void main() {
   test('Benchmark del Algoritmo A* - Tiempos de Ejecución', () {
-    // 1. Definir los escenarios de prueba exactos que mencionas en tu informe.
-    // Cada mensaje usa conectores claros ("desde" = origen, "hasta" = destino)
-    // para que el motor identifique y ordene los dos lugares correctamente.
     final pruebas = [
       {
         'escenario': 'Ruta Corta (2-3 nodos)',
@@ -35,18 +32,13 @@ void main() {
     print('==================================================\n');
 
     for (var prueba in pruebas) {
-      // Reiniciar el cronómetro para cada prueba.
       stopwatch.reset();
       stopwatch.start();
 
-      // 2. Llamar al método público que ejecuta la búsqueda A*. `_buscarRuta`
-      //    es privado, así que usamos `interpretarMensaje` como envoltorio.
       final RouteResult resultado =
           RouteEngine.interpretarMensaje(prueba['mensaje']!);
 
       stopwatch.stop();
-
-      // 3. Mostrar resultados en milisegundos (ms).
       final double tiempoMs = stopwatch.elapsedMicroseconds / 1000.0;
 
       print('Escenario: ${prueba['escenario']}');
